@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flipkart GRID - CADENCE Demo</title>
+    <style>
+        /* Reset and Base Styles */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Roboto, Arial, sans-serif;
+            background-color: #f1f3f6;
+            color: #212121;
+        }
+
+        .app {
+            min-height: 100vh;
+        }
+
+        /* Flipkart Header */
+        .flipkart-header {
+            background-color: #2874f0;
+            padding: 8px 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+        }
+
+        .header-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo-section {
+            min-width: 160px;
+        }
+
+        .flipkart-logo {
+            color: white;
+        }
+
+        .logo-text {
+            font-size: 20px;
+            font-weight: bold;
+            font-style: italic;
+        }
+
+        .explore-plus {
+            font-size: 11px;
+            display: block;
+            margin-top: -2px;
+        }
+
+        .plus {
+            color: #ffe500;
+        }
+
+        /* Search Section */
+        .search-section {
+            flex: 1;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .search-container {
+            position: relative;
+            width: 100%;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 2px;
+            font-size: 14px;
+            outline: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .search-button {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 44px;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 0 2px 2px 0;
+        }
+
+        /* Header Actions */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .header-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 12px;
+            position: relative;
+        }
+
+        .header-item span:first-child {
+            font-size: 16px;
+            margin-bottom: 2px;
+        }
+
+        .cart-count {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            background: #ff6161;
+            color: white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Category Navigation */
+        .category-nav {
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 8px 0;
+        }
+
+        .category-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            gap: 40px;
+            overflow-x: auto;
+        }
+
+        .category-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            min-width: 80px;
+            padding: 8px 4px;
+        }
+
+        .category-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .category-name {
+            font-size: 14px;
+            color: #212121;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        /* Main Content */
+        .main-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        /* Hero Banner */
+        .hero-banner {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            border-radius: 8px;
+            margin-bottom: 24px;
+            padding: 40px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .banner-content {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+            flex: 1;
+        }
+
+        .banner-text h2 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            font-weight: 300;
+        }
+
+        .banner-text p {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .banner-image {
+            font-size: 80px;
+        }
+
+        .banner-right {
+            position: absolute;
+            top: 20px;
+            right: 40px;
+        }
+
+        .freedom-sale {
+            background: #ff6161;
+            color: white;
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .sale-badge {
+            font-weight: bold;
+            font-size: 14px;
+            line-height: 1.3;
+        }
+
+        .live-now {
+            background: #ffd700;
+            color: #212121;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            margin-top: 4px;
+            display: inline-block;
+        }
+
+        /* Products Section */
+        .products-section {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 24px;
+        }
+
+        .products-section h3 {
+            font-size: 20px;
+            font-weight: 500;
+            margin-bottom: 20px;
+            color: #212121;
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+
+        .product-card {
+            text-align: center;
+            padding: 16px;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+
+        .product-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+        }
+
+        .product-image {
+            font-size: 64px;
+            margin-bottom: 12px;
+        }
+
+        .product-name {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #212121;
+            line-height: 1.3;
+        }
+
+        .product-price {
+            font-size: 16px;
+            font-weight: bold;
+            color: #388e3c;
+            margin-bottom: 4px;
+        }
+
+        .original-price {
+            font-size: 12px;
+            color: #878787;
+            text-decoration: line-through;
+        }
+
+        /* Flight Booking Sidebar */
+        .flight-booking-sidebar {
+            position: fixed;
+            right: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 100;
+        }
+
+        .flight-card {
+            background: #2874f0;
+            color: white;
+            padding: 24px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            width: 200px;
+        }
+
+        .flight-card h4 {
+            font-size: 16px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .flight-card p {
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .flight-icon {
+            font-size: 48px;
+        }
+
+        .demo-note {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: #4caf50;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Flipkart Header -->
+        <header class="flipkart-header">
+            <div class="header-container">
+                <div class="logo-section">
+                    <div class="flipkart-logo">
+                        <span class="logo-text">Flipkart</span>
+                        <span class="explore-plus">Explore <span class="plus">Plus</span></span>
+                    </div>
+                </div>
+                
+                <div class="search-section">
+                    <div class="search-container">
+                        <input type="text" class="search-input" placeholder="Search for Products, Brands and More" value="mobile 5g">
+                        <button class="search-button">🔍</button>
+                    </div>
+                </div>
+                
+                <div class="header-actions">
+                    <div class="header-item">
+                        <span>👤</span>
+                        <span>Account</span>
+                    </div>
+                    <div class="header-item">
+                        <span>🛒</span>
+                        <span>Cart</span>
+                        <span class="cart-count">0</span>
+                    </div>
+                    <div class="header-item">
+                        <span>🏪</span>
+                        <span>Become a Seller</span>
+                    </div>
+                    <div class="header-item">
+                        <span>⋯</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Category Navigation -->
+        <nav class="category-nav">
+            <div class="category-container">
+                <div class="category-item">
+                    <div class="category-icon" style="background-color: #FFD700;">⏱️</div>
+                    <span class="category-name">Minutes</span>
+                </div>
+                <div class="category-item">
+                    <div class="category-icon" style="background-color: #FF6B35;">📱</div>
+                    <span class="category-name">Mobiles & Tablets</span>
+                </div>
+                <div class="category-item">
+                    <div class="category-icon" style="background-color: #E91E63;">👗</div>
+                    <span class="category-name">Fashion</span>
+                </div>
+                <div class="category-item">
+                    <div class="category-icon" style="background-color: #2196F3;">💻</div>
+                    <span class="category-name">Electronics</span>
+                </div>
+                <div class="category-item">
+                    <div class="category-icon" style="background-color: #4CAF50;">🏠</div>
+                    <span class="category-name">Home & Furniture</span>
+                </div>
+                <div class="category-item">
+                    <div class="category-icon" style="background-color: #9C27B0;">📺</div>
+                    <span class="category-name">TVs & Appliances</span>
+                </div>
+                <div class="category-item">
+                    <div class="category-icon" style="background-color: #00BCD4;">✈️</div>
+                    <span class="category-name">Flight Bookings</span>
+                </div>
+                <div class="category-item">
+                    <div class="category-icon" style="background-color: #FF9800;">💄</div>
+                    <span class="category-name">Beauty, Food..</span>
+                </div>
+                <div class="category-item">
+                    <div class="category-icon" style="background-color: #4CAF50;">🛒</div>
+                    <span class="category-name">Grocery</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Hero Banner -->
+            <div class="hero-banner">
+                <div class="banner-content">
+                    <div class="banner-text">
+                        <h2>Unlock padhna ka future<br/>with Intel-powered laptops</h2>
+                        <p>From ₹47,990*</p>
+                    </div>
+                    <div class="banner-image">💻</div>
+                </div>
+                <div class="banner-right">
+                    <div class="freedom-sale">
+                        <div class="sale-badge">
+                            FREEDOM<br/>SALE<br/>
+                            <span class="live-now">LIVE NOW</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Best of Electronics -->
+            <section class="products-section">
+                <h3>Best of Electronics</h3>
+                <div class="products-grid">
+                    <div class="product-card">
+                        <div class="product-image">⌚</div>
+                        <div class="product-name">Fastrack Smartwatch</div>
+                        <div class="product-price">From ₹1,399</div>
+                        <div class="original-price">₹2,999</div>
+                    </div>
+                    <div class="product-card">
+                        <div class="product-image">📽️</div>
+                        <div class="product-name">Projector</div>
+                        <div class="product-price">From ₹6990</div>
+                    </div>
+                    <div class="product-card">
+                        <div class="product-image">📷</div>
+                        <div class="product-name">Top Mirrorless Came...</div>
+                        <div class="product-price">Shop Now!</div>
+                    </div>
+                    <div class="product-card">
+                        <div class="product-image">🖥️</div>
+                        <div class="product-name">Monitors</div>
+                        <div class="product-price">From ₹9999</div>
+                    </div>
+                    <div class="product-card">
+                        <div class="product-image">🖨️</div>
+                        <div class="product-name">Printers</div>
+                        <div class="product-price">From ₹2336</div>
+                    </div>
+                    <div class="product-card">
+                        <div class="product-image">🎧</div>
+                        <div class="product-name">Best Truewireless H...</div>
+                        <div class="product-price">Grab Now</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Flight Bookings Sidebar -->
+        <div class="flight-booking-sidebar">
+            <div class="flight-card">
+                <h4>Flight bookings</h4>
+                <p>From ₹1,499*</p>
+                <div class="flight-icon">✈️</div>
+            </div>
+        </div>
+
+        <!-- Demo Note -->
+        <div class="demo-note">
+            ✅ Flipkart UI Successfully Recreated!<br/>
+            🚀 CADENCE Training Running in Background
+        </div>
+    </div>
+
+    <script>
+        // Simple search functionality demo
+        document.querySelector('.search-input').addEventListener('focus', function() {
+            this.style.boxShadow = '0 4px 8px rgba(40, 116, 240, 0.3)';
+        });
+        
+        document.querySelector('.search-input').addEventListener('blur', function() {
+            this.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+        });
+
+        // Category hover effects
+        document.querySelectorAll('.category-item').forEach(item => {
+            item.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-2px)';
+            });
+            item.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0)';
+            });
+        });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,64 @@
+# Core ML and Data Processing
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
+datasets>=2.12.0
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+
+# Vector Search and Embeddings
+faiss-cpu>=1.7.4
+sentence-transformers>=2.2.2
+chromadb>=0.4.0
+
+# Database and Backend
+sqlite3
+sqlalchemy>=2.0.0
+redis>=4.5.0
+fastapi>=0.100.0
+uvicorn>=0.22.0
+pydantic>=2.0.0
+aiosqlite>=0.19.0
+
+# Google Gemini
+google-genai>=0.3.0
+
+# Data Processing
+nltk>=3.8.0
+spacy>=3.6.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+
+# Clustering and ML
+umap-learn>=0.5.3
+hdbscan>=0.8.29
+plotly>=5.15.0
+
+# Performance and Monitoring
+prometheus-client>=0.17.0
+structlog>=23.1.0
+asyncio>=3.4.3
+
+# Development
+pytest>=7.4.0
+black>=23.0.0
+flake8>=6.0.0
+jupyter>=1.0.0
+
+# Web UI
+jinja2>=3.1.0
+python-multipart>=0.0.6
+static-files>=0.1.0
+
+# Training and Model Persistence
+joblib>=1.3.0
+pickle5>=0.0.12
+
+# Dataset loading
+datasets>=2.14.0
+huggingface-hub>=0.16.0
+
+# Additional ML dependencies
+torch>=2.0.0
+transformers>=4.30.0 
