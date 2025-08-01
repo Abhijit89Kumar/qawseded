@@ -9,8 +9,7 @@ import random
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import uuid
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 import structlog
 from config.settings import settings
 from database.connection import db_manager
@@ -23,8 +22,15 @@ class GeminiSyntheticDataGenerator:
     """
     
     def __init__(self):
-        self.client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-        self.model = "gemini-2.0-flash"
+        # Configure Gemini with API key
+        api_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY must be set in settings or environment variables")
+        
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        
+        logger.info(f"Initialized Gemini LLM with model: gemini-1.5-flash")
         
         # Data templates and patterns
         self.user_personas = [
@@ -92,23 +98,23 @@ class GeminiSyntheticDataGenerator:
         """
         
         try:
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=prompt)]
-                )
-            ]
+            generation_config = genai.types.GenerationConfig(
+                temperature=0.7,
+                max_output_tokens=2048,
+            )
             
-            response = ""
-            for chunk in self.client.models.generate_content_stream(
-                model=self.model,
-                contents=contents,
-                config=types.GenerateContentConfig(temperature=0.7)
-            ):
-                response += chunk.text
+            response = self.model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
             
             # Parse JSON response
-            user_data = json.loads(response.strip())
+            response_text = response.text.strip()
+            # Clean up any markdown code blocks
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            
+            user_data = json.loads(response_text)
             return user_data
             
         except Exception as e:
@@ -212,22 +218,22 @@ class GeminiSyntheticDataGenerator:
         """
         
         try:
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=prompt)]
-                )
-            ]
+            generation_config = genai.types.GenerationConfig(
+                temperature=0.8,
+                max_output_tokens=2048,
+            )
             
-            response = ""
-            for chunk in self.client.models.generate_content_stream(
-                model=self.model,
-                contents=contents,
-                config=types.GenerateContentConfig(temperature=0.8)
-            ):
-                response += chunk.text
+            response = self.model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
             
-            session_data = json.loads(response.strip())
+            response_text = response.text.strip()
+            # Clean up any markdown code blocks
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            
+            session_data = json.loads(response_text)
             return session_data
             
         except Exception as e:
@@ -330,22 +336,22 @@ class GeminiSyntheticDataGenerator:
         """
         
         try:
-            contents = [
-                types.Content(
-                    role="user", 
-                    parts=[types.Part.from_text(text=prompt)]
-                )
-            ]
+            generation_config = genai.types.GenerationConfig(
+                temperature=0.7,
+                max_output_tokens=1024,
+            )
             
-            response = ""
-            for chunk in self.client.models.generate_content_stream(
-                model=self.model,
-                contents=contents,
-                config=types.GenerateContentConfig(temperature=0.7)
-            ):
-                response += chunk.text
+            response = self.model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
             
-            engagement_actions = json.loads(response.strip())
+            response_text = response.text.strip()
+            # Clean up any markdown code blocks
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            
+            engagement_actions = json.loads(response_text)
             
             # Convert to full engagement objects
             engagements = []
@@ -386,7 +392,7 @@ class GeminiSyntheticDataGenerator:
     async def generate_synthetic_queries(self, categories: List[str], 
                                        num_queries_per_category: int = 1000) -> List[Dict[str, Any]]:
         """
-        Generate synthetic search queries for different categories
+        Generate synthetic search queries for different categories with e-commerce focus
         """
         logger.info(f"Generating synthetic queries for {len(categories)} categories")
         
@@ -396,7 +402,69 @@ class GeminiSyntheticDataGenerator:
             category_queries = await self._generate_category_queries(category, num_queries_per_category)
             all_queries.extend(category_queries)
         
+        # Also generate cross-category and trending queries
+        trending_queries = await self._generate_trending_ecommerce_queries(num_queries_per_category // 2)
+        all_queries.extend(trending_queries)
+        
         return all_queries
+    
+    async def _generate_trending_ecommerce_queries(self, num_queries: int) -> List[Dict[str, Any]]:
+        """
+        Generate trending e-commerce queries that are popular across platforms
+        """
+        prompt = f"""
+        Generate {min(num_queries, 100)} trending e-commerce search queries that are currently popular 
+        on platforms like Amazon, Flipkart, etc. Include:
+        
+        - Seasonal queries (holidays, weather-based)
+        - Technology trends (latest gadgets, smartphones)
+        - Fashion trends (current styles, popular brands)
+        - Home essentials (work from home, fitness)
+        - Gift ideas (occasions, demographics)
+        - Deal-seeking queries (discounts, offers)
+        
+        Return as JSON array:
+        [
+            {{
+                "query_text": "search query",
+                "intent": "browsing/research/purchase",
+                "specificity": "broad/medium/specific",
+                "estimated_results": 1000,
+                "trend_category": "seasonal/tech/fashion/home/gifts/deals"
+            }}
+        ]
+        
+        Make them realistic and diverse.
+        """
+        
+        try:
+            generation_config = genai.types.GenerationConfig(
+                temperature=0.8,
+                max_output_tokens=4096,
+            )
+            
+            response = self.model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
+            
+            response_text = response.text.strip()
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            
+            queries = json.loads(response_text)
+            
+            # Add metadata
+            for query in queries:
+                query['category'] = 'trending'
+                query['generated_at'] = datetime.utcnow().isoformat()
+                query['source'] = 'gemini_synthetic_trending'
+            
+            return queries
+            
+        except Exception as e:
+            logger.error(f"Error generating trending queries: {e}")
+            return []
     
     async def _generate_category_queries(self, category: str, num_queries: int) -> List[Dict[str, Any]]:
         """
@@ -426,22 +494,22 @@ class GeminiSyntheticDataGenerator:
         """
         
         try:
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=prompt)]
-                )
-            ]
+            generation_config = genai.types.GenerationConfig(
+                temperature=0.8,
+                max_output_tokens=4096,
+            )
             
-            response = ""
-            for chunk in self.client.models.generate_content_stream(
-                model=self.model,
-                contents=contents,
-                config=types.GenerateContentConfig(temperature=0.8)
-            ):
-                response += chunk.text
+            response = self.model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
             
-            queries = json.loads(response.strip())
+            response_text = response.text.strip()
+            # Clean up any markdown code blocks
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            
+            queries = json.loads(response_text)
             
             # Add metadata
             for query in queries:
@@ -454,6 +522,97 @@ class GeminiSyntheticDataGenerator:
         except Exception as e:
             logger.error(f"Error generating queries for {category}: {e}")
             return []
+    
+    async def generate_realistic_products(self, num_products: int = 1000) -> List[Dict[str, Any]]:
+        """
+        Generate realistic product data for engagement simulation
+        """
+        logger.info(f"Generating {num_products} realistic products")
+        
+        # Generate products in batches
+        batch_size = 50  # Generate 50 products at a time
+        all_products = []
+        
+        categories = [
+            "Electronics", "Clothing & Fashion", "Home & Kitchen", "Sports & Outdoors",
+            "Books & Media", "Beauty & Personal Care", "Automotive", "Toys & Games",
+            "Health & Household", "Tools & Home Improvement"
+        ]
+        
+        for i in range(0, num_products, batch_size):
+            batch_products = await self._generate_product_batch(
+                min(batch_size, num_products - i), categories
+            )
+            all_products.extend(batch_products)
+            
+            if (i + batch_size) % 200 == 0:
+                logger.info(f"Generated {min(i + batch_size, num_products)} products")
+        
+        return all_products
+    
+    async def _generate_product_batch(self, batch_size: int, categories: List[str]) -> List[Dict[str, Any]]:
+        """
+        Generate a batch of realistic products
+        """
+        selected_categories = random.sample(categories, min(5, len(categories)))
+        
+        prompt = f"""
+        Generate {batch_size} realistic e-commerce products for these categories: {', '.join(selected_categories)}
+        
+        Create diverse products with realistic details that would be found on Amazon/Flipkart:
+        
+        Return as JSON array:
+        [
+            {{
+                "product_id": "unique_id",
+                "title": "realistic product title",
+                "description": "detailed description",
+                "main_category": "category from the list",
+                "price": 25.99,
+                "rating": 4.2,
+                "rating_count": 150,
+                "brand": "brand name",
+                "features": ["feature1", "feature2"],
+                "keywords": ["keyword1", "keyword2"]
+            }}
+        ]
+        
+        Make titles and descriptions realistic for actual products you'd find online.
+        Vary prices realistically within each category.
+        """
+        
+        try:
+            generation_config = genai.types.GenerationConfig(
+                temperature=0.8,
+                max_output_tokens=4096,
+            )
+            
+            response = self.model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
+            
+            response_text = response.text.strip()
+            if response_text.startswith('```json'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            
+            products = json.loads(response_text)
+            
+            # Add unique product IDs and timestamps
+            for i, product in enumerate(products):
+                if 'product_id' not in product or not product['product_id']:
+                    product['product_id'] = f"prod_{uuid.uuid4().hex[:12]}"
+                product['generated_at'] = datetime.utcnow().isoformat()
+                product['source'] = 'gemini_synthetic'
+            
+            return products
+            
+        except Exception as e:
+            logger.error(f"Error generating product batch: {e}")
+            # Critical failure - cannot proceed without real data
+            logger.error("❌ CRITICAL: Cannot generate synthetic products without Gemini")
+            logger.error("Check your GEMINI_API_KEY and internet connection")
+            raise RuntimeError("Synthetic product generation failed - Gemini LLM required")
     
     async def save_synthetic_data_to_database(self, users: List[Dict[str, Any]], 
                                             sessions: List[Dict[str, Any]],
@@ -521,12 +680,8 @@ async def generate_full_synthetic_dataset(num_users: int = 1000) -> bool:
         
         # Load some product data for engagement generation
         logger.info("Step 3: Loading products for engagement generation")
-        # This would typically load from the product database
-        # For now, we'll create some dummy products
-        products = [
-            {'product_id': f'prod_{i}', 'title': f'Product {i}', 'main_category': 'electronics', 'price': 100 + i}
-            for i in range(1000)
-        ]
+        # Generate realistic products using Gemini
+        products = await generator.generate_realistic_products(num_products=1000)
         
         # Generate engagements
         logger.info("Step 4: Generating user engagements")

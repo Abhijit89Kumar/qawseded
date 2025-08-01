@@ -12,7 +12,7 @@ from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sentence_transformers import SentenceTransformer
 from umap import UMAP
-import hdbscan
+from hdbscan import HDBSCAN
 from collections import Counter
 import nltk
 from nltk.corpus import stopwords
