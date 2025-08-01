@@ -19,6 +19,7 @@ from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from tqdm.auto import tqdm
 
 from core.data_processor import DataProcessor
 from core.cadence_model import CADENCEModel, create_cadence_model
@@ -346,12 +347,12 @@ class CADENCETrainer:
         model.to(self.device)
         
         # Training loop
-        for epoch in range(epochs):
+        for epoch in tqdm(range(epochs), desc="🚀 Epochs", unit="epoch"):
             model.train()
             total_loss = 0
             num_batches = 0
             
-            for batch in train_loader:
+            for batch in tqdm(train_loader, desc=f"{model_type.capitalize()} Epoch {epoch+1}", leave=False):
                 optimizer.zero_grad()
                 
                 # Move to device
@@ -587,7 +588,7 @@ class CADENCETrainer:
         
         # Training loop
         logger.info(f"Starting enhanced training for {epochs} epochs...")
-        for epoch in range(epochs):
+        for epoch in tqdm(range(epochs), desc="🚀 Epochs", unit="epoch"):
             logger.info(f"Epoch {epoch+1}/{epochs}")
             
             # Train query model
@@ -674,7 +675,7 @@ class CADENCETrainer:
         total_loss = 0.0
         num_batches = 0
         
-        for batch in dataloader:
+        for batch in tqdm(dataloader, desc=f"{model_type.capitalize()} Training", leave=False):
             # Move batch to device
             input_ids = batch['input_ids'].to(device)
             target_ids = batch['target_ids'].to(device)

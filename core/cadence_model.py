@@ -174,8 +174,19 @@ class CategoryConstrainedGRUMN(nn.Module):
                 brand_ids: Optional[torch.Tensor] = None,
                 price_range_ids: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
         """
-        Enhanced forward pass with e-commerce specific features
+        Enhanced forward pass with e-commerce specific features.
+        The memory tapes are **reset at the beginning of every forward** call so that
+        they do not carry hidden states across independent mini-batches. Carrying
+        memory across batches can lead to a mismatch in the batch dimension when
+        the last batch of an epoch has a different size (e.g. 31 instead of 32),
+        which resulted in the runtime error:
+            RuntimeError: The size of tensor a (32) must match the size of tensor b (31)
+        Resetting the memory for each new batch keeps the temporal memory within a
+        sequence while preventing cross-batch leakage.
         """
+        # Reset memory tapes at the start of each new batch/sequence
+        self.reset_memory()
+
         batch_size, seq_len = input_ids.size()
         
         # Initialize hidden states if not provided
