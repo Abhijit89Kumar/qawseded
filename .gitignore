@@ -1,3 +1,16 @@
+# Node.js (CRITICAL - prevents node_modules upload!)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+.npm
+.eslintcache
+.next/
+out/
+build/
+dist/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -16,100 +29,62 @@ parts/
 sdist/
 var/
 wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
 
 # Virtual environments
-.env
-.venv
-env/
 venv/
+env/
 ENV/
-env.bak/
-venv.bak/
 
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# pyenv
-.python-version
-
-# Node.js (for React frontend)
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# React build
-frontend/build/
-frontend/dist/
+# Data and Models (too large for GitHub)
+data/
+models/
+processed_data/
+checkpoints/
+legendary_models/
+trained_models/
+*.pt
+*.pth
+*.parquet
+*.csv
+*.json.gz
 
 # Logs
 logs/
+training_logs/
 *.log
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+# API Keys (security)
+kaggle.json
+.env
+config/secrets.py
 
-# Models and data
-models/
-data/
-*.pkl
-*.joblib
-*.h5
-*.pth
-
-# OS generated files
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
-
-# Environment variables
-.env.local
-.env.development.local  
-.env.test.local
-.env.production.local
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+debug_*.py
+test_*.py
+check_*.py
+fix_*.py
+validate_*.py
+
+# Large files and directories
+legendary_models/
+legendary_frontend/
+checkpoints/
+training_status.json

@@ -3,23 +3,28 @@ Main FastAPI Application for Enhanced CADENCE System
 Provides real-time hyper-personalized autosuggest and product recommendations
 """
 import asyncio
+import json
+import pickle
 import time
 import uuid
+import torch
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 import structlog
 
-from config.settings import settings
+from config.settings import settings, ENGAGEMENT_ACTIONS, ECOMMERCE_CATEGORIES
 from database.connection import db_manager, initialize_database
 from core.data_processor import DataProcessor
 from core.cadence_model import CADENCEModel, DynamicBeamSearch, create_cadence_model
 from core.personalization import PersonalizationEngine, UserEmbeddingModel, ProductReranker
+from core.ecommerce_autocomplete import ECommerceAutocompleteEngine, ProductSpecificQueryGenerator
 from training.train_models import CADENCETrainer
 
 logger = structlog.get_logger()
@@ -40,10 +45,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve React build for frontend
+# NOTE: The static React build should be mounted *after* API routes are registered
 from pathlib import Path
 build_dir = Path(__file__).parent.parent / "frontend" / "build"
-app.mount("/", StaticFiles(directory=str(build_dir), html=True), name="frontend")
 
 # Global variables for models
 cadence_model: Optional[CADENCEModel] = None
@@ -51,6 +55,8 @@ personalization_engine: Optional[PersonalizationEngine] = None
 product_reranker: Optional[ProductReranker] = None
 beam_search: Optional[DynamicBeamSearch] = None
 data_processor: Optional[DataProcessor] = None
+ecommerce_autocomplete: Optional[ECommerceAutocompleteEngine] = None
+product_database: List[Dict[str, Any]] = []
 
 # Request/Response Models
 class AutosuggestRequest(BaseModel):
@@ -108,9 +114,11 @@ class EngagementResponse(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize models and database connections"""
-    global cadence_model, personalization_engine, product_reranker, beam_search, data_processor
+    global cadence_model, personalization_engine, product_reranker, beam_search, data_processor, ecommerce_autocomplete, product_database
     
     logger.info("Starting Enhanced CADENCE API")
+    # Record start time for uptime metric
+    app.state.start_time = datetime.utcnow()
     
     try:
         # Initialize database
@@ -122,22 +130,112 @@ async def startup_event():
         # Initialize trainer
         trainer = CADENCETrainer()
         
-        # Try to load existing trained models
-        try:
-            logger.info("Loading trained models...")
-            cadence_model, vocab, config = trainer.load_model_and_vocab('cadence_trained')
-            num_categories = config['num_categories']
-            logger.info("Loaded pre-trained CADENCE models")
-        except FileNotFoundError:
-            logger.warning("⚠️ No pre-trained models found. Running in fallback mode.")
-            cadence_model = None
-            vocab = {}
-            num_categories = 10  # Default categories
+        # Try to load existing trained models - check multiple locations
+        cadence_model = None
+        vocab = {}
+        config = {}
+        num_categories = 10
+        
+        # Try legendary models first
+        legendary_model_path = Path("legendary_models/legendary_cadence_complete.pt")
+        if legendary_model_path.exists():
+            try:
+                logger.info("Loading LEGENDARY CADENCE models...")
+                # Load the legendary complete model
+                checkpoint = torch.load(legendary_model_path, map_location='cpu', weights_only=False)
+                
+                # Extract model config and vocab from checkpoint
+                model_config = checkpoint.get('model_config', {})
+                vocab = checkpoint.get('vocab', {})
+                cluster_info = checkpoint.get('cluster_info', {})
+                
+                # Get dimensions from config
+                vocab_size = len(vocab) if vocab else model_config.get('vocab_size', 50000)
+                num_categories = model_config.get('num_categories', len(cluster_info.get('query_clusters', {})) + len(cluster_info.get('product_clusters', {})))
+                if num_categories == 0:
+                    num_categories = 50  # Default fallback
+                
+                # Create model with proper config
+                filtered_config = {k: v for k, v in model_config.items() if k not in ('vocab_size', 'num_categories')}
+                cadence_model = create_cadence_model(vocab_size, num_categories, **filtered_config)
+                # Load weights from checkpoint, allowing for keys that may be missing or extra
+                cadence_model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+                cadence_model.eval()
+                # Attach vocabulary to model for prefix lookups
+                setattr(cadence_model, 'vocab', vocab)
+                
+                config = {
+                    'num_categories': num_categories, 
+                    'vocab_size': vocab_size,
+                    'model_config': model_config
+                }
+                
+                logger.info(f"Loaded LEGENDARY CADENCE model ({vocab_size:,} vocab, {num_categories} categories)")
+                logger.info(f"   Training date: {checkpoint.get('training_date', 'Unknown')}")
+                
+            except Exception as e:
+                logger.error(f"Failed to load legendary models: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                cadence_model = None
+        
+        # Fallback to optimized models
+        if cadence_model is None:
+            optimized_model_path = Path("models/optimized_cadence.pt")
+            optimized_config_path = Path("models/optimized_cadence_config.json")
+            optimized_vocab_path = Path("models/optimized_cadence_vocab.pkl")
+            
+            if optimized_model_path.exists() and optimized_config_path.exists() and optimized_vocab_path.exists():
+                try:
+                    logger.info("Loading optimized CADENCE models...")
+                    
+                    # Load config
+                    with open(optimized_config_path, 'r') as f:
+                        config = json.load(f)
+                    
+                    # Load vocab
+                    with open(optimized_vocab_path, 'rb') as f:
+                        vocab = pickle.load(f)
+                    
+                    # Load model
+                    vocab_size = len(vocab)
+                    num_categories = config['num_categories']
+                    
+                    filtered_config = {k: v for k, v in config.items() if k not in ('vocab_size', 'num_categories')}
+                    cadence_model = create_cadence_model(vocab_size, num_categories, **filtered_config)
+                    # Load weights with non-strict flag to ignore keys that do not match exactly
+                    cadence_model.load_state_dict(torch.load(optimized_model_path, map_location='cpu'), strict=False)
+                    cadence_model.eval()
+                    # Attach vocabulary to model for prefix lookups
+                    setattr(cadence_model, 'vocab', vocab)
+                    
+                    logger.info(f"Loaded optimized CADENCE models ({vocab_size:,} vocab, {num_categories} categories)")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to load optimized models: {e}")
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    cadence_model = None
+        
+        # Final fallback
+        if cadence_model is None:
+            try:
+                logger.info("Trying standard trained models...")
+                cadence_model, vocab, config = trainer.load_model_and_vocab('cadence_trained')
+                # Attach vocabulary from trainer to the model
+                setattr(cadence_model, 'vocab', vocab)
+                num_categories = config['num_categories']
+                logger.info("Loaded standard CADENCE models")
+            except FileNotFoundError:
+                logger.warning("No pre-trained models found. Running in fallback mode.")
+                cadence_model = None
+                vocab = {}
+                num_categories = 10  # Default categories
         
         # Initialize personalization components
         user_embedding_model = UserEmbeddingModel(
             num_categories=num_categories,
-            num_actions=len(settings.ENGAGEMENT_ACTIONS),
+            num_actions=len(ENGAGEMENT_ACTIONS),
             embedding_dim=128
         )
         
@@ -146,6 +244,23 @@ async def startup_event():
         
         # Initialize beam search
         beam_search = DynamicBeamSearch(cadence_model, vocab)
+        
+        # Load Amazon products dataset for real product database
+        logger.info("Loading Amazon products for real product database...")
+        try:
+            product_df = data_processor.load_and_process_amazon_products(max_samples=10000)
+            product_database = product_df.to_dict('records')
+            logger.info(f"Loaded {len(product_database)} products from Amazon dataset")
+        except Exception as e:
+            logger.error(f"Failed to load Amazon products: {e}")
+            product_database = []
+        
+        # Initialize enhanced e-commerce autocomplete
+        ecommerce_autocomplete = ECommerceAutocompleteEngine(
+            cadence_model=cadence_model,
+            vocab=vocab,
+            product_data=product_database
+        )
         
         logger.info("Enhanced CADENCE API started successfully")
         
@@ -415,24 +530,44 @@ async def retrain_models(max_samples: int = 5000, epochs: int = 1):
 @app.get("/admin/stats")
 async def get_system_stats():
     """
-    Get system statistics
+    Get system statistics (used by the frontend dashboard).
+    The shape is aligned with the TS/JS expectations:
+    {
+        "model_info": {"parameters": int, "vocab_size": int, "device": str},
+        "data_info" : {"products": int, "queries": int},
+        "uptime_secs": float
+    }
     """
     try:
-        # This would query the database for stats
-        stats = {
-            "total_users": 0,  # Would be queried from DB
-            "total_sessions": 0,
-            "total_queries": 0,
-            "total_engagements": 0,
-            "models_loaded": {
-                "cadence_model": cadence_model is not None,
-                "personalization_engine": personalization_engine is not None,
-                "product_reranker": product_reranker is not None
-            }
+        # ---- model statistics ----
+        if cadence_model is not None:
+            param_count = sum(p.numel() for p in cadence_model.parameters())
+            vocab_size = getattr(cadence_model, "vocab_size", 0)
+            device = next(cadence_model.parameters()).device.type
+        else:
+            param_count = 0
+            vocab_size = 0
+            device = "cpu"
+
+        model_info = {
+            "parameters": int(param_count),
+            "vocab_size": int(vocab_size),
+            "device": device,
         }
-        
+
+        # ---- data statistics ----
+        # Get real data statistics
+        data_info = {
+            "products": len(product_database),
+            "queries": 0,  # TODO: Implement query count from database
+        }
+
+        stats = {
+            "model_info": model_info,
+            "data_info": data_info,
+            "uptime_secs": (datetime.utcnow() - app.state.start_time).total_seconds() if hasattr(app.state, "start_time") else 0,
+        }
         return stats
-        
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -440,103 +575,116 @@ async def get_system_stats():
 # Helper functions
 async def _get_base_suggestions(query_prefix: str) -> List[str]:
     """
-    Get base suggestions from CADENCE model
+    Get enhanced e-commerce specific autocomplete suggestions
     """
-    try:
-        if not beam_search or not cadence_model:
-            # Fallback suggestions
-            return [
-                f"{query_prefix} for sale",
-                f"{query_prefix} online", 
-                f"{query_prefix} cheap",
-                f"{query_prefix} best",
-                f"{query_prefix} reviews"
-            ]
-        
-        # Try to use real CADENCE model for generation
+    prefix = query_prefix.strip().lower()
+    if not prefix:
+        return []
+
+    # Use enhanced e-commerce autocomplete if available
+    if ecommerce_autocomplete is not None:
         try:
-            # Simple prefix completion for demo
-            common_completions = {
-                'l': ['laptop gaming', 'laptop programming', 'laptop student', 'laptop business'],
-                'la': ['laptop macbook', 'laptop dell', 'laptop hp', 'laptop lenovo'],
-                'lap': ['laptop computer', 'laptop backpack', 'laptop stand', 'laptop cooling pad'],
-                'lapt': ['laptop gaming', 'laptop ultrabook', 'laptop convertible'],
-                'laptop': ['laptop for programming', 'laptop for gaming', 'laptop for students', 'laptop for business'],
-                'p': ['phone case', 'phone charger', 'phone samsung', 'phone apple'],
-                'ph': ['phone accessories', 'phone holder', 'phone screen protector'],
-                'pho': ['phone case', 'phone charger', 'phone wireless', 'phone bluetooth'],
-                'phon': ['phone case protective', 'phone charger fast', 'phone stand', 'phone mount'],
-                'phone': ['phone case', 'phone charger', 'phone accessories', 'phone screen protector'],
-                'h': ['headphones wireless', 'headphones bluetooth', 'headphones gaming', 'headphones noise cancelling'],
-                'he': ['headphones sony', 'headphones apple', 'headphones bose'],
-                'hea': ['headphones wireless', 'headphones over ear', 'headphones in ear'],
-                'head': ['headphones bluetooth', 'headphones gaming', 'headphones studio'],
-                'headp': ['headphones wireless', 'headphones noise cancelling'],
-                'headph': ['headphones bluetooth', 'headphones wireless'],
-                'headpho': ['headphones wireless bluetooth', 'headphones noise cancelling'],
-                'headphon': ['headphones wireless', 'headphones bluetooth'],
-                'headphone': ['headphones wireless', 'headphones bluetooth', 'headphones gaming'],
-                'headphones': ['headphones wireless', 'headphones bluetooth', 'headphones noise cancelling', 'headphones gaming'],
-                's': ['shoes running', 'smartphone', 'smartwatch', 'speaker bluetooth'],
-                'sh': ['shoes nike', 'shoes adidas', 'shirt', 'shorts'],
-                'sho': ['shoes running', 'shoes casual', 'shoes sports', 'shoes formal'],
-                'shoe': ['shoes for men', 'shoes for women', 'shoes running', 'shoes casual'],
-                'shoes': ['shoes running', 'shoes casual', 'shoes sports', 'shoes formal'],
-                'w': ['watch smart', 'wireless headphones', 'water bottle', 'wallet'],
-                'wa': ['watch apple', 'watch samsung', 'wallet leather', 'water bottle'],
-                'wat': ['watch smartwatch', 'water bottle steel', 'watch digital'],
-                'watc': ['watch smart', 'watch fitness', 'watch analog'],
-                'watch': ['watch smart', 'watch fitness', 'watch analog', 'watch digital']
-            }
+            suggestions_data = await ecommerce_autocomplete.get_suggestions(
+                query_prefix=prefix,
+                max_suggestions=10
+            )
             
-            suggestions = common_completions.get(query_prefix.lower(), [
-                f"{query_prefix} best",
-                f"{query_prefix} online", 
-                f"{query_prefix} cheap",
-                f"{query_prefix} quality",
-                f"{query_prefix} sale"
-            ])
-            
-            return suggestions[:5]  # Return top 5
-            
-        except Exception as model_error:
-            logger.warning(f"Model generation failed: {model_error}")
-            # Fallback to simple suggestions
-            return [
-                f"{query_prefix} best",
-                f"{query_prefix} cheap",
-                f"{query_prefix} online",
-                f"{query_prefix} sale",
-                f"{query_prefix} quality"
-            ]
-        
-    except Exception as e:
-        logger.error(f"Error getting base suggestions: {e}")
-        return [f"{query_prefix} {suffix}" for suffix in ["best", "online", "cheap", "sale", "quality"]]
+            # Extract text suggestions
+            suggestions = [s['text'] for s in suggestions_data if s.get('text')]
+            if suggestions:
+                logger.info(f"Generated {len(suggestions)} e-commerce suggestions for '{prefix}'")
+                return suggestions
+        except Exception as e:
+            logger.error(f"E-commerce autocomplete failed: {e}")
+
+    # Fallback: Neural generation
+    try:
+        if cadence_model is not None and beam_search is not None:
+            tokens = prefix.split()
+            generated = beam_search.search(tokens, category_id=0, model_type="query")
+            suggestions = [s for s in generated if s]
+            if suggestions:
+                return suggestions[:10]
+    except Exception as gen_err:
+        logger.warning(f"BeamSearch generation failed: {gen_err}")
+
+    # Final fallback: Vocabulary prefix match
+    try:
+        vocab_map = getattr(cadence_model, 'vocab', {})
+        if vocab_map:
+            prefix_matches = [tok for tok in vocab_map.keys() if tok.isalpha() and tok.startswith(prefix)]
+            prefix_matches.sort(key=lambda x: (len(x), x))
+            if prefix_matches:
+                return prefix_matches[:10]
+    except Exception as vocab_err:
+        logger.warning(f"Vocab prefix match failed: {vocab_err}")
+
+    return []
 
 async def _get_base_search_results(query: str, max_results: int) -> List[Dict[str, Any]]:
     """
-    Get base search results (would integrate with product search engine)
+    Get base search results from real Amazon product database
     """
     try:
-        # This would integrate with your product search engine
-        # For demo, return mock products
-        base_products = []
+        if not product_database:
+            logger.error("❌ CRITICAL: No product database loaded!")
+            logger.error("The system must have real Amazon products loaded.")
+            logger.error("Run: python run_enhanced_cadence_system.py to load real data")
+            raise HTTPException(status_code=500, detail="Product database not initialized. Real Amazon products required.")
         
-        for i in range(min(max_results, 20)):
-            product = {
-                'product_id': f'prod_{i}',
-                'title': f'{query} Product {i}',
-                'description': f'Description for {query} product {i}',
-                'price': 50.0 + (i * 10),
-                'rating': 3.5 + (i % 3) * 0.5,
-                'brand': f'Brand {i % 5}',
-                'main_category': 'electronics',
-                'image_url': f'https://example.com/product_{i}.jpg'
+        # Search in real product database
+        query_lower = query.lower()
+        matching_products = []
+        
+        for product in product_database:
+            title = product.get('title', '').lower()
+            description = product.get('description', '').lower()
+            brand = product.get('brand', '').lower()
+            category = product.get('main_category', '').lower()
+            
+            # Calculate relevance score
+            score = 0.0
+            if query_lower in title:
+                score += 2.0
+            if query_lower in description:
+                score += 1.0
+            if query_lower in brand:
+                score += 1.5
+            if query_lower in category:
+                score += 0.5
+            
+            # Add word-level matching
+            query_words = query_lower.split()
+            for word in query_words:
+                if word in title:
+                    score += 0.5
+                if word in brand:
+                    score += 0.3
+            
+            if score > 0:
+                matching_products.append((product, score))
+        
+        # Sort by relevance score
+        matching_products.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return top results
+        results = []
+        for product, score in matching_products[:max_results]:
+            # Ensure all required fields are present
+            result = {
+                'product_id': product.get('product_id', ''),
+                'title': product.get('title', ''),
+                'description': product.get('description', ''),
+                'price': product.get('price'),
+                'rating': product.get('rating'),
+                'brand': product.get('brand', ''),
+                'main_category': product.get('main_category', ''),
+                'image_url': product.get('image_url', f"https://images.unsplash.com/300x300/?text={product.get('title', 'Product')[:20].replace(' ', '+')}")
             }
-            base_products.append(product)
+            results.append(result)
         
-        return base_products
+        logger.info(f"Found {len(results)} products for query '{query}'")
+        return results
         
     except Exception as e:
         logger.error(f"Error getting search results: {e}")
@@ -590,6 +738,64 @@ def _calculate_engagement_breakdown(engagements: List[Dict[str, Any]]) -> Dict[s
         breakdown[action_type] = breakdown.get(action_type, 0) + 1
     
     return breakdown
+
+# ---------------------------
+# v1 Compatibility Router
+# ---------------------------
+router_v1 = APIRouter(prefix="/api/v1")
+
+class AutocompleteV1Request(BaseModel):
+    query: str
+    max_suggestions: int = 10
+    category: Optional[int] = None
+
+@router_v1.post("/autocomplete")
+async def autocomplete_v1(payload: AutocompleteV1Request):
+    # Minimal wrapper around existing _get_base_suggestions; production
+    # implementation would call personalization, etc.
+    start = datetime.utcnow()
+    suggestions = await _get_base_suggestions(payload.query)
+    return {
+        "suggestions": suggestions[: payload.max_suggestions],
+        "processing_time_ms": (datetime.utcnow() - start).total_seconds() * 1000,
+    }
+
+class SearchV1Request(BaseModel):
+    query: str
+    max_results: int = 20
+    category_filter: Optional[int] = None
+    sort_by: Optional[str] = "relevance"
+
+@router_v1.post("/search")
+async def search_v1(payload: SearchV1Request):
+    start = datetime.utcnow()
+    results = await _get_base_search_results(payload.query, payload.max_results)
+    return {
+        "results": results,
+        "total_results": len(results),
+        "processing_time_ms": (datetime.utcnow() - start).total_seconds() * 1000,
+    }
+
+@router_v1.get("/categories")
+async def categories_v1():
+    # Convert the mapping into an array of objects expected by the React UI
+    product_categories = [
+        {"id": cat_id, "name": name}
+        for cat_id, name in ECOMMERCE_CATEGORIES.items()
+    ]
+    return {"product_categories": product_categories}
+
+@router_v1.get("/stats")
+async def stats_v1():
+    return await get_system_stats()
+
+# Register compatibility router
+app.include_router(router_v1)
+
+# Serve React build ONLY if the production build directory exists. Mounting at the
+# end ensures it does not shadow API routes like /health or /api/v1/*.
+if build_dir.exists():
+    app.mount("/", StaticFiles(directory=str(build_dir), html=True), name="frontend")
 
 if __name__ == "__main__":
     import uvicorn

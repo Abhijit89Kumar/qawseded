@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = Field(default="redis://localhost:6379", env="REDIS_URL")
     
     # Gemini API
-    GEMINI_API_KEY: str = Field(..., env="GEMINI_API_KEY")
+    GEMINI_API_KEY: str = "AIzaSyCpQLaZJwQwYTAB7UFDPxxCnx_ABwDXez0"
+
     
     # Model Configuration
     MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
